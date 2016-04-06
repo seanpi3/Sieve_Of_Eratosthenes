@@ -4,6 +4,7 @@
 
 pthread_cond_t cond;
 pthread_mutex_t mutex;
+pthread_mutex_t ready_queue_mutex;
 int work = 0;
 
 typedef struct ready_queue{
@@ -14,18 +15,30 @@ typedef struct ready_queue{
 struct ready_queue *head;
 struct ready_queue *tail;
 
+typedef struct numbers{
+	int number;
+	int marked;
+};
+struct numbers** number_array;
+
+/*Logic for the slave threads*/
 void *slaveLogic(void *arg){
 	int ready;
-	pthread_mutex_lock(&mutex);
-	//while(!work)
-		//pthread_cond_wait();
+	pthread_t id = (pthread_t)arg;
 
-	pthread_mutex_unlock(&mutex);
+	/*Add self to the ready queue*/
+	pthread_mutex_lock(&ready_queue_mutex);
+	tail->next = malloc(sizeof(struct ready_queue));
+	tail = tail->next;
+	tail->id = id;
+	pthread_mutex_unlock(&ready_queue_mutex);
+
+
 	return 0;
 }
 
 int main(int argc, char *argv[]){
-	int num_threads, n, c;
+	int num_threads, n, chunk_size, i;
 
 	/* Dealing with command line inputs */
 	if(argc != 4){
@@ -35,31 +48,34 @@ int main(int argc, char *argv[]){
 	else{
 		num_threads = atoi(argv[1]);
 		n=atoi(argv[2]);
-		c=atoi(argv[3]);
+		chunk_size=atoi(argv[3]);
 	}
+	
 
 	/* Initialize the queue*/
-	head = malloc(sizeof(struct ready_queue));
 	pthread_t slaves[num_threads];
-	int i;
-	struct ready_queue *current = head;
-	pthread_create(&slaves[0],NULL,slaveLogic,NULL);
-	current->id = slaves[0];
-	tail = head;
+	tail = malloc(sizeof(struct ready_queue));
+	head = malloc(sizeof(struct ready_queue));
+	tail->next = head;
 	
-	for(i=1;i<num_threads;i++){
-		pthread_create(&slaves[i],NULL,slaveLogic,(void*)current);
-		current = malloc(sizeof(struct ready_queue));
-		current->id = slaves[i];
-		current->next = head;
-		head = current;
+	for(i=0;i<num_threads;i++){
+		pthread_create(&slaves[i],NULL,slaveLogic,(void*)slaves[i]);
 	}
-		
+	
+	/*Initialize the numbers*/
+	number_array = malloc(sizeof(struct numbers)*(n-1));
+	for(i=0;i<0;i++){
+		number_array[i]->number = i+1;
+		number_array[i]->marked = 0;
+	}
 
 
 
 
 
+
+
+	/*Wait for all threads to complete*/
 	for(i=0;i<num_threads;i++){
 		pthread_join(slaves[i],NULL);
 	}
