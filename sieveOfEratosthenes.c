@@ -36,7 +36,7 @@ void *slaveLogic(void *arg){
 	int ready;
 	struct slave *slave_info = (struct slave*)arg;
 
-	printf("Thread: %d waiting for all threads to be ready\n",slave_info->slave_num);
+	//printf("Thread: %d waiting for all threads to be ready\n",slave_info->slave_num);
 	pthread_barrier_wait(&init_barrier);
 
 	/*Add self to the ready queue*/
@@ -46,7 +46,6 @@ void *slaveLogic(void *arg){
 	tail->id = slave_info->id;
 	pthread_mutex_unlock(&ready_queue_mutex);
 
-	printf("Yo im ready dawg\n");
 	return 0;
 }
 
@@ -72,21 +71,18 @@ int main(int argc, char *argv[]){
 	pthread_barrier_init(&init_barrier,NULL,num_threads);
 
 	/* Initialize the slaves*/
-	slaves = malloc(num_threads);
-	for(i=0;i<num_threads;i++){
+	slaves = malloc(sizeof(struct slave*)*num_threads);
+	for(i=0;i<num_threads;i++)
 					slaves[i] = malloc(sizeof(struct slave));
-	}
+	
 	tail = malloc(sizeof(struct ready_queue));
 	head = malloc(sizeof(struct ready_queue));
 	tail->next = head;
 	
 	for(i=0;i<num_threads;i++){
-		if(i==4) printf("seg fault inc\n");
 		pthread_create(&slaves[i]->id,NULL,slaveLogic,(void*)slaves[i]);
 		slaves[i]->slave_num = i;
 	}
-
-	printf("I got here \n");
 
 	
 	/*Initialize the numbers*/
@@ -103,9 +99,10 @@ int main(int argc, char *argv[]){
 
 
 
+
 	/*Wait for all threads to complete*/
 	for(i=0;i<num_threads;i++){
-		pthread_join(slaves[i],NULL);
+		pthread_join(slaves[i]->id,NULL);
 	}
 	
 	return 0;
