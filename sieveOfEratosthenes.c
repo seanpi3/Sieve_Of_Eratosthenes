@@ -1,13 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <math.h>
 
 pthread_mutex_t ready_queue_mutex;
 pthread_barrier_t init_barrier;
 int* marked;
 
 typedef struct ready_queue{
-	pthread_t id;
+	int id;
 	struct ready_queue *next;
 };
 
@@ -39,38 +40,14 @@ void *slaveLogic(void *arg){
 	struct ready_queue *queue_position = malloc(sizeof(struct ready_queue));
 	struct work *slave_work = jobs[slave_info->slave_num];
 	int i;
-	queue_position->id = slave_info->id;
+	queue_position->id = slave_info->slave_num;
 
 	printf("Thread: %d waiting for all threads to be ready\n",slave_info->slave_num);
 	pthread_barrier_wait(&init_barrier);
 
-	/*Add self to the ready queue*/
-	pthread_mutex_lock(&ready_queue_mutex);
-	if(tail == empty_queue){
-		head = queue_position;
-		tail = head;
-	}
-	else{
-		tail->next = queue_position;
-		tail = tail->next;
-	}	
-	pthread_mutex_unlock(&ready_queue_mutex);
-
 	/*Main Work Loop*/
 	for(;;){
-		/*Check for work*/
-		pthread_mutex_lock(&slave_info->mutex);
-		while(slave_work->work_ready != 1)
-			pthread_cond_wait(&slave_info->cond,&slave_info->mutex);
-		pthread_mutex_unlock(&slave_info->mutex);
-	
-		/*Do work*/
-		for(i=slave_work->lower_bound;i<slave_work->upper_bound;i++){
-			if(i%slave_work->k == 0)
-				marked[i] = 1;
-		}
-
-		/*Work done, add self back to ready queue*/
+		/*Add self to the ready queue*/
 		pthread_mutex_lock(&ready_queue_mutex);
 		if(tail == empty_queue){
 			head = queue_position;
@@ -79,20 +56,35 @@ void *slaveLogic(void *arg){
 		else{
 			tail->next = queue_position;
 			tail = tail->next;
+			tail->next = empty_queue;
 		}	
 		pthread_mutex_unlock(&ready_queue_mutex);
-		
+
+		/*Check for work*/
+		pthread_mutex_lock(&slave_info->mutex);
+		while(slave_work->work_ready != 1)
+			pthread_cond_wait(&slave_info->cond,&slave_info->mutex);
+		pthread_mutex_unlock(&slave_info->mutex);
+	
+		/*Do work*/
+		printf("got work %d to %d, k = %d\n",slave_work->lower_bound,slave_work->upper_bound,slave_work->k);
+		for(i=slave_work->lower_bound;i<slave_work->upper_bound;i++){
+			if(i%(slave_work->k) == 0){
+				marked[i] = 1;
+				printf("%d marked\n",i);
+			}
+		}
+		slave_work->work_ready = 0;
 	}	
+
+
 	return 0;
 }
 
 
-void assign_work(){
-	
-}
-
 int main(int argc, char *argv[]){
 	int num_threads, n, chunk_size, i;
+	int chunks,j;
 
 	/* Dealing with command line inputs */
 	if(argc != 4){
@@ -105,8 +97,9 @@ int main(int argc, char *argv[]){
 		chunk_size=atoi(argv[3]);
 	}
 	
-	pthread_barrier_init(&init_barrier,NULL,num_threads);
+	pthread_barrier_init(&init_barrier,NULL,num_threads+1);
 
+	printf("Initalizing work\n");
 	/*Initialize the work*/
 	jobs = malloc(sizeof(struct work*)*num_threads);
 	for(i=0;i<num_threads;i++){
@@ -114,11 +107,13 @@ int main(int argc, char *argv[]){
 		jobs[i]->work_ready = 0;
 	}
 
+	printf("Initalizing numbers\n");
 	/*Initialize the numbers*/
 	marked = malloc(sizeof(int)*(n+1));
 	for(i=0;i<n+1;i++)
 		marked[i] = 0;
 
+	printf("Initalizing slaves\n");
 	/* Initialize the slaves*/
 	empty_queue = malloc(1);
 	head = empty_queue;
@@ -135,20 +130,40 @@ int main(int argc, char *argv[]){
 		pthread_create(&slaves[i]->id,NULL,slaveLogic,(void*)slaves[i]);
 	}
 
+	pthread_barrier_wait(&init_barrier);
+
+
+	printf("Assigning Work\n");
 	/*Assign Work*/
-	for(i=0;i<num_threads;i++){
-		assign_work(i);
-	}
-
-
-
-
-
-
-	/*Wait for all threads to complete*/
-	for(i=0;i<num_threads;i++){
-		pthread_join(slaves[i]->id,NULL);
+	int curr_id;
+	for(i=2;i<(int)(floor(sqrt(n)));i++){
+		if(!marked[i]){
+			chunks = ceil((n-(i*i))/chunk_size);
+			for(j=1;j<=chunks;j++){
+				pthread_mutex_lock(&ready_queue_mutex);
+				while(head==empty_queue){
+					pthread_mutex_unlock(&ready_queue_mutex);
+					pthread_mutex_lock(&ready_queue_mutex);
+				}
+				curr_id = head->id;
+				head = head->next;
+				pthread_mutex_unlock(&ready_queue_mutex);
+				jobs[curr_id]->k=i;
+				jobs[curr_id]->lower_bound = (i*i)*j;
+				jobs[curr_id]->upper_bound = ((i*i)*j+1)-1;
+				if(jobs[curr_id]->upper_bound > n) jobs[curr_id]->upper_bound = n;
+				jobs[curr_id]->work_ready = 1;
+				pthread_cond_broadcast(&slaves[curr_id]->cond);
+			}
+		}
 	}
 	
+	for(i=0;i<num_threads;i++){
+		if(jobs[i]->work_ready==1) i=0;
+	}	
+
+	if(marked[n]==0) printf("%d is prime\n",n);
+	else printf("%d is not prime\n",n);
+
 	return 0;
 }
