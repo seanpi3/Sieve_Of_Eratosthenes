@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <math.h>
+#include <sys/time.h>
 
 pthread_mutex_t ready_queue_mutex;
 pthread_barrier_t init_barrier;
@@ -93,10 +94,13 @@ int main(int argc, char *argv[]){
 		n=atoi(argv[2]);
 		chunk_size=atoi(argv[3]);
 	}
+
+	struct timeval start_time, end_time;
+	gettimeofday(&start_time,NULL);
+	printf("Calculating whether %d is prime using %d threads with a chunk size of %d.\n",n,num_threads,chunk_size);
 	
 	pthread_barrier_init(&init_barrier,NULL,num_threads+1);
 
-	printf("Initalizing work\n");
 	/*Initialize the work*/
 	jobs = malloc(sizeof(struct work*)*num_threads);
 	for(i=0;i<num_threads;i++){
@@ -104,13 +108,11 @@ int main(int argc, char *argv[]){
 		jobs[i]->work_ready = 0;
 	}
 
-	printf("Initalizing numbers\n");
 	/*Initialize the numbers*/
 	marked = malloc(sizeof(int)*(n+1));
 	for(i=0;i<n+1;i++)
 		marked[i] = 0;
 
-	printf("Initalizing slaves\n");
 	/* Initialize the slaves*/
 	empty_queue = malloc(1);
 	head = empty_queue;
@@ -130,9 +132,10 @@ int main(int argc, char *argv[]){
 	pthread_barrier_wait(&init_barrier);
 
 
-	printf("Assigning Work\n");
 	/*Assign Work*/
 	int curr_id;
+	double percent;
+	long int elapsed;
 	for(i=2;i<(int)(floor(sqrt(n)));i++){
 		if(!marked[i]){
 			chunks = ceil((n-(i*i))/chunk_size);
@@ -157,11 +160,23 @@ int main(int argc, char *argv[]){
 				pthread_cond_broadcast(&slaves[curr_id]->cond);
 			}
 		}
+
+		percent = (i/sqrt(n))*100;
+		
+		gettimeofday(&end_time,NULL);
+		long int elapsed = (end_time.tv_usec + 1000000 *end_time.tv_sec) - (start_time.tv_usec + 1000000 * start_time.tv_sec); 
+		printf("\r");
+		printf("%02f%% completed. Time elapsed: %02ld.%06ld",percent,elapsed/1000000,elapsed%1000000);
 	}
+	printf("\n");
 	for(i=0;i<num_threads;i++){
 		if(jobs[i]->work_ready==1) i=0;
 	}	
 
+	gettimeofday(&end_time,NULL);
+
+	elapsed = (end_time.tv_usec + 1000000 *end_time.tv_sec) - (start_time.tv_usec + 1000000 * start_time.tv_sec); 
+	printf("Caclulation complete.\nTotal time elapsed:%ld seconds.\n",elapsed/1000000);
 	/*for(i=3;i<=n;i+=2){
 		if(marked[i]==0) printf("%d is prime\n",i);
 	}*/
