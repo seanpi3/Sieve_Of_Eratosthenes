@@ -162,11 +162,11 @@ int main(int argc, char *argv[]){
 		if(jobs[i]->work_ready==1) i=0;
 	}	
 
-	for(i=3;i<=n;i+=2){
+	/*for(i=3;i<=n;i+=2){
 		if(marked[i]==0) printf("%d is prime\n",i);
-	}
-	//if(marked[n]==0) printf("%d is prime\n",n);
-	//else printf("%d is not prime\n",n);
+	}*/
+	if(marked[n]==0) printf("%d is prime\n",n);
+	else printf("%d is not prime\n",n);
 
 	return 0;
 }
