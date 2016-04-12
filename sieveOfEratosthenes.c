@@ -42,7 +42,6 @@ void *slaveLogic(void *arg){
 	int i;
 	queue_position->id = slave_info->slave_num;
 
-	printf("Thread: %d waiting for all threads to be ready\n",slave_info->slave_num);
 	pthread_barrier_wait(&init_barrier);
 
 	/*Main Work Loop*/
@@ -67,11 +66,9 @@ void *slaveLogic(void *arg){
 		pthread_mutex_unlock(&slave_info->mutex);
 	
 		/*Do work*/
-		printf("got work %d to %d, k = %d\n",slave_work->lower_bound,slave_work->upper_bound,slave_work->k);
-		for(i=slave_work->lower_bound;i<slave_work->upper_bound;i++){
+		for(i=slave_work->lower_bound;i<=slave_work->upper_bound;i++){
 			if(i%(slave_work->k) == 0){
 				marked[i] = 1;
-				printf("%d marked\n",i);
 			}
 		}
 		slave_work->work_ready = 0;
@@ -139,31 +136,37 @@ int main(int argc, char *argv[]){
 	for(i=2;i<(int)(floor(sqrt(n)));i++){
 		if(!marked[i]){
 			chunks = ceil((n-(i*i))/chunk_size);
-			for(j=1;j<=chunks;j++){
+			for(j=0;j<=chunks;j++){
 				pthread_mutex_lock(&ready_queue_mutex);
 				while(head==empty_queue){
 					pthread_mutex_unlock(&ready_queue_mutex);
 					pthread_mutex_lock(&ready_queue_mutex);
 				}
 				curr_id = head->id;
-				head = head->next;
+				if(head == tail){
+					head=empty_queue;
+					tail=empty_queue;
+				}
+				else head=head->next;
 				pthread_mutex_unlock(&ready_queue_mutex);
 				jobs[curr_id]->k=i;
-				jobs[curr_id]->lower_bound = (i*i)*j;
-				jobs[curr_id]->upper_bound = ((i*i)*j+1)-1;
+				jobs[curr_id]->lower_bound = (i*i)+(chunk_size*j);
+				jobs[curr_id]->upper_bound = ((i*i)+(chunk_size*(j+1)))-1;
 				if(jobs[curr_id]->upper_bound > n) jobs[curr_id]->upper_bound = n;
 				jobs[curr_id]->work_ready = 1;
 				pthread_cond_broadcast(&slaves[curr_id]->cond);
 			}
 		}
 	}
-	
 	for(i=0;i<num_threads;i++){
 		if(jobs[i]->work_ready==1) i=0;
 	}	
 
-	if(marked[n]==0) printf("%d is prime\n",n);
-	else printf("%d is not prime\n",n);
+	for(i=3;i<=n;i+=2){
+		if(marked[i]==0) printf("%d is prime\n",i);
+	}
+	//if(marked[n]==0) printf("%d is prime\n",n);
+	//else printf("%d is not prime\n",n);
 
 	return 0;
 }
